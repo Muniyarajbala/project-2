@@ -20,7 +20,7 @@ app.use(express.static("public"));
 *************************************************/
 const pool = mysql.createPool({
   host: process.env.MYSQLHOST,
-  user: process.env.MYSQLUSER,
+  user: process.env.MYSQL_USER,
   password: process.env.MYSQLPASSWORD,
   database: process.env.MYSQLDATABASE,
   port: process.env.MYSQLPORT,
@@ -44,10 +44,10 @@ setInterval(async () => {
 /*************************************************
 |   RAZORPAY CONFIG
 *************************************************/
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// const razorpay = new Razorpay({
+//   key_id: process.env.RAZORPAY_KEY_ID,
+//   key_secret: process.env.RAZORPAY_KEY_SECRET,
+// });
 
 /*************************************************
 |   CREATE TABLES (MYSQL)
