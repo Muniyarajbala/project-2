@@ -202,28 +202,42 @@ app.post("/showtimes", async (req, res) => {
 
     const [times] = await pool.query("SELECT * FROM showtimes");
 
+    // Convert time_slot strings to minutes and sort
     times.sort((a, b) => toMinutes(a.time_slot) - toMinutes(b.time_slot));
 
-    const today = new Date().toISOString().split("T")[0];
+    // Get today's date in IST (VERY IMPORTANT FIX)
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata"
+    });
 
+    // If selected date ≠ today → return ALL times
     if (selected_date !== today) {
       return res.json(times);
     }
 
-    const now = new Date();
+    // Current IST time
+    const nowIST = new Date().toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata"
+    });
+
+    const now = new Date(nowIST);
+
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
+    // Filter upcoming timings (slot + 2h15min allowed)
     const upcoming = times.filter(slot => {
-      const start = toMinutes(slot.time_slot);
-      return currentMinutes <= start + 135;
+      const start = toMinutes(slot.time_slot);    // Convert slot time to minutes
+      return currentMinutes <= start + 135;       // 135 min = 2hr 15min
     });
 
     res.json(upcoming);
 
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Cannot fetch showtimes" });
   }
 });
+
 
 /*************************************************
 |   BOOK TICKET (WITH MULTIPLE SEATS)
