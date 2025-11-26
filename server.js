@@ -275,7 +275,7 @@ app.post("/book", async (req, res) => {
 /*************************************************
 |   AVAILABLE SEATS
 *************************************************/
-app.post("/available-seats", async (req, res) => {
+aapp.post("/available-seats", async (req, res) => {
   const { movie_id, date, time_slot_id } = req.body;
 
   const allSeats = [
@@ -297,14 +297,19 @@ app.post("/available-seats", async (req, res) => {
     );
 
     const bookedSeats = booked.map(b => b.seat_no);
+
     const available = allSeats.filter(s => !bookedSeats.includes(s));
 
-    res.json({ available });
+    res.json({ 
+      booked: bookedSeats,
+      available: available
+    });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /*************************************************
 |   SAMPLE ROUTE
