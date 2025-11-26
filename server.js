@@ -275,7 +275,7 @@ app.post("/book", async (req, res) => {
 /*************************************************
 |   AVAILABLE SEATS
 *************************************************/
-aapp.post("/available-seats", async (req, res) => {
+app.post("/available-seats", async (req, res) => {
   const { movie_id, date, time_slot_id } = req.body;
 
   const allSeats = [
