@@ -10,9 +10,11 @@ const Razorpay = require("razorpay");
 const mysql = require("mysql2/promise");
 
 const app = express();
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(cors());
+
 app.use(express.static("public"));
 
 /*************************************************
@@ -198,6 +200,7 @@ app.post("/add-showtime", async (req, res) => {
 *************************************************/
 app.post("/showtimes", async (req, res) => {
   try {
+     console.log("RAW BODY:", req.body);
     const { selected_date } = req.body;
 
     const [times] = await pool.query("SELECT * FROM showtimes");
