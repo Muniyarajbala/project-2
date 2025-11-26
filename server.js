@@ -19,15 +19,16 @@ app.use(express.static("public"));
 |   MYSQL CONNECTION (POOL + KEEP ALIVE)
 *************************************************/
 const pool = mysql.createPool({
-  host: process.env.MYSQLHOST,
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQLPASSWORD,
-  database: process.env.MYSQLDATABASE,
-  port: process.env.MYSQLPORT,
+  host: process.env.MYSQLHOST,        // ✔ correct
+  user: process.env.MYSQLUSER,        // ✔ FIXED
+  password: process.env.MYSQLPASSWORD, // ✔ correct
+  database: process.env.MYSQLDATABASE, // ✔ correct
+  port: process.env.MYSQLPORT,         // ✔ correct
   waitForConnections: true,
   connectionLimit: 10,
   enableKeepAlive: true
 });
+
 
 /*************************************************
 |   KEEP-ALIVE QUERY (Prevents Next-Day Error)
