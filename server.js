@@ -309,6 +309,39 @@ app.post("/available-seats", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+/*************************************************
+|   CHECK USER BY EMAIL  (exist_user + user data)
+*************************************************/
+app.post("/check-user", async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT * FROM users WHERE email = ?`,
+      [email]
+    );
+
+    // user exists
+    if (rows.length > 0) {
+      return res.json({
+        exist_user: true,
+        user: rows[0]   // returns full user data: id, name, email, phone
+      });
+    }
+
+    // user not found
+    return res.json({
+      exist_user: false
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 
 /*************************************************
