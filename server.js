@@ -500,6 +500,274 @@ app.get("/sample", (req, res) => {
 });
 
 /*************************************************
+|   ADD THIS TO YOUR BACKEND (index.js)
+|   Add before the /sample route or at the end
+*************************************************/
+
+app.get("/payment", (req, res) => {
+  const { key, order_id, amount, booking_id, name, email } = req.query;
+  
+  res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 450px;
+            width: 100%;
+            text-align: center;
+            animation: slideUp 0.4s ease;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 15px;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .booking-id {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .amount {
+            font-size: 48px;
+            color: #667eea;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .pay-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 50px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        .pay-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+        }
+        .pay-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 25px;
+            font-size: 16px;
+            min-height: 30px;
+        }
+        .loading {
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .success {
+            color: #28a745;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .error {
+            color: #dc3545;
+            font-size: 16px;
+        }
+        .info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon" id="icon">🎬</div>
+        <h2>Complete Payment</h2>
+        <div class="booking-id">Booking ID: <strong>${booking_id}</strong></div>
+        
+        <div class="amount">₹${amount}</div>
+        
+        <div class="info">
+            Secure payment powered by Razorpay
+        </div>
+        
+        <button class="pay-btn" id="payBtn" onclick="openRazorpay()">
+            💳 Pay Now
+        </button>
+        
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        function openRazorpay() {
+            const options = {
+                key: '${key}',
+                amount: ${amount} * 100,
+                currency: 'INR',
+                order_id: '${order_id}',
+                name: 'Theatre Booking',
+                description: 'Movie Ticket Payment',
+                prefill: {
+                    name: '${name}',
+                    email: '${email}'
+                },
+                theme: {
+                    color: '#667eea'
+                },
+                handler: function(response) {
+                    verifyPayment(response);
+                },
+                modal: {
+                    ondismiss: function() {
+                        showInfo('Payment cancelled');
+                        setTimeout(() => {
+                            window.close();
+                        }, 1500);
+                    }
+                }
+            };
+
+            const rzp = new Razorpay(options);
+            
+            rzp.on('payment.failed', function(response) {
+                showError('Payment failed: ' + response.error.description);
+            });
+
+            rzp.open();
+        }
+
+        async function verifyPayment(response) {
+            showLoading('Verifying payment...');
+            document.getElementById('payBtn').disabled = true;
+
+            try {
+                const backendUrl = window.location.origin; // Gets current domain automatically
+                const result = await fetch('https://project-2-production-e62e.up.railway.app/verify-payment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        razorpay_payment_id: response.razorpay_payment_id,
+                        razorpay_order_id: response.razorpay_order_id,
+                        razorpay_signature: response.razorpay_signature,
+                        booking_id: '${booking_id}'
+                    })
+                });
+
+                const data = await result.json();
+
+                if (data.verified) {
+                    showSuccess('✅ Payment Successful!');
+                    document.getElementById('icon').textContent = '✅';
+                    
+                    setTimeout(() => {
+                        window.close();
+                    }, 2000);
+                } else {
+                    showError('❌ Payment verification failed');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError('❌ Network error occurred');
+            }
+        }
+
+        function showLoading(message) {
+            document.getElementById('status').innerHTML = \`
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span>\${message}</span>
+                </div>
+            \`;
+        }
+
+        function showSuccess(message) {
+            document.getElementById('status').innerHTML = \`
+                <div class="success">\${message}</div>
+            \`;
+        }
+
+        function showError(message) {
+            document.getElementById('status').innerHTML = \`
+                <div class="error">\${message}</div>
+            \`;
+        }
+
+        function showInfo(message) {
+            document.getElementById('status').innerHTML = \`
+                <div style="color: #666;">\${message}</div>
+            \`;
+        }
+
+        // Auto-open on mobile
+        if (window.innerWidth <= 768) {
+            setTimeout(openRazorpay, 800);
+        }
+    </script>
+</body>
+</html>
+  `);
+});
+
+/*************************************************
+|   TESTING THE ROUTE
+*************************************************/
+
+// After adding above route, restart your server
+// Test URL format:
+// http://localhost:3000/payment?key=rzp_test_xxx&order_id=order_123&amount=450&booking_id=1&name=Test&email=test@test.com
+
+// On Railway:
+// https://your-app.railway.app/payment?key=rzp_test_xxx&order_id=order_123&amount=450&booking_id=1&name=Test&email=test@test.com
+/*************************************************
 |   SERVER START
 *************************************************/
 const PORT = process.env.PORT || 3000;
