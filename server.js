@@ -353,9 +353,7 @@ app.post("/initiate-booking", async (req, res) => {
   try {
     const { mail, name, movie_id, slot_id, amount, date } = req.body;
 
-    if (!mail || !name || !movie_id || !slot_id || !seats || !amount) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
+  
 
     let seats = req.body.seats;
 
@@ -367,7 +365,10 @@ app.post("/initiate-booking", async (req, res) => {
         seats = seats.replace("[","").replace("]","");
         seats = seats.split(",").map(s => s.trim());
     }
-  } 
+    }
+    if (!mail || !name || !movie_id || !slot_id || !seats || !amount) {
+      return res.status(400).json({ error: "Missing fields" });
+    } 
     /* 1️⃣ Check if user exists */
     let [userRows] = await pool.query(
       `SELECT id FROM users WHERE email = ?`,
