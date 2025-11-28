@@ -353,22 +353,22 @@ app.post("/initiate-booking", async (req, res) => {
   try {
     const { mail, name, movie_id, slot_id, amount, date } = req.body;
 
-  
-
     let seats = req.body.seats;
 
-// Convert string → array
+    // Convert string seats → array
     if (typeof seats === "string") {
-    try {
+      try {
         seats = JSON.parse(seats);
-    } catch (e) {
-        seats = seats.replace("[","").replace("]","");
+      } catch (e) {
+        seats = seats.replace("[", "").replace("]", "");
         seats = seats.split(",").map(s => s.trim());
+      }
     }
-    }
+
     if (!mail || !name || !movie_id || !slot_id || !seats || !amount) {
       return res.status(400).json({ error: "Missing fields" });
-    } 
+    }
+
     /* 1️⃣ Check if user exists */
     let [userRows] = await pool.query(
       `SELECT id FROM users WHERE email = ?`,
@@ -413,19 +413,26 @@ app.post("/initiate-booking", async (req, res) => {
       receipt: "receipt_" + booking_id
     });
 
-    /* 5️⃣ Save order_id inside booking */
+    /* 5️⃣ Save razorpay order_id */
     await pool.query(
       `UPDATE bookings SET razorpay_order_id = ? WHERE id = ?`,
       [order.id, booking_id]
     );
 
-    /* 6️⃣ Send response to bot */
+    /* 6️⃣ Build FULL PAYMENT URL */
+    const paymentUrl =
+      `https://project-2-production-e62e.up.railway.app/payment` +
+      `?key=${process.env.RAZORPAY_KEY_ID}` +
+      `&order_id=${order.id}` +
+      `&amount=${amount}` +
+      `&booking_id=${booking_id}` +
+      `&name=${encodeURIComponent(name)}` +
+      `&email=${encodeURIComponent(mail)}`;
+
+    /* 7️⃣ Send only URL to Zobot */
     res.json({
       status: "success",
-      booking_id,
-      order_id: order.id,
-      key_id: process.env.RAZORPAY_KEY_ID,
-      amount
+      payment_url: paymentUrl
     });
 
   } catch (err) {
@@ -433,6 +440,7 @@ app.post("/initiate-booking", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 
