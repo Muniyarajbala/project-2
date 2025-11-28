@@ -280,11 +280,12 @@ app.post("/book", async (req, res) => {
 app.post("/available-seats", async (req, res) => {
   const { movie_id, date, time_slot_id } = req.body;
 
-  const allSeats = [    
-    "D1","D2","D3","D4","D5",
-    "C1","C2","C3","C4","C5",
+  const allSeats = [   
+    "A1","A2","A3","A4","A5", 
      "B1","B2","B3","B4","B5",
-     "A1","A2","A3","A4","A5",
+     "C1","C2","C3","C4","C5",
+    "D1","D2","D3","D4","D5",
+         
   ];
 
   try {
@@ -350,12 +351,23 @@ app.post("/check-user", async (req, res) => {
 *************************************************/
 app.post("/initiate-booking", async (req, res) => {
   try {
-    const { mail, name, movie_id, slot_id, seats, amount, date } = req.body;
+    const { mail, name, movie_id, slot_id, amount, date } = req.body;
 
     if (!mail || !name || !movie_id || !slot_id || !seats || !amount) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
+    let seats = req.body.seats;
+
+// Convert string → array
+    if (typeof seats === "string") {
+    try {
+        seats = JSON.parse(seats);
+    } catch (e) {
+        seats = seats.replace("[","").replace("]","");
+        seats = seats.split(",").map(s => s.trim());
+    }
+  } 
     /* 1️⃣ Check if user exists */
     let [userRows] = await pool.query(
       `SELECT id FROM users WHERE email = ?`,
