@@ -14,7 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(cors());
-
+const crypto = require("crypto");
 app.use(express.static("public"));
 
 /*************************************************
@@ -47,10 +47,10 @@ setInterval(async () => {
 /*************************************************
 |   RAZORPAY CONFIG
 *************************************************/
-// const razorpay = new Razorpay({
-//   key_id: process.env.RAZORPAY_KEY_ID,
-//   key_secret: process.env.RAZORPAY_KEY_SECRET,
-// });
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
 /*************************************************
 |   CREATE TABLES (MYSQL)
@@ -92,6 +92,7 @@ async function createTables() {
         time_slot_id INT,
         total_amount INT,
         payment_status VARCHAR(20) DEFAULT 'pending',
+         razorpay_order_id VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (movie_id) REFERENCES movies(id),
@@ -339,6 +340,140 @@ app.post("/check-user", async (req, res) => {
     });
 
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+/*************************************************
+|   INITIATE BOOKING (Old/New User → Booking → RZP Order)
+*************************************************/
+app.post("/initiate-booking", async (req, res) => {
+  try {
+    const { mail, name, movie_id, slot_id, seats, amount, date } = req.body;
+
+    if (!mail || !name || !movie_id || !slot_id || !seats || !amount) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    /* 1️⃣ Check if user exists */
+    let [userRows] = await pool.query(
+      `SELECT id FROM users WHERE email = ?`,
+      [mail]
+    );
+
+    let user_id;
+
+    if (userRows.length > 0) {
+      user_id = userRows[0].id;
+    } else {
+      const [insertUser] = await pool.query(
+        `INSERT INTO users (name, email) VALUES (?, ?)`,
+        [name, mail]
+      );
+      user_id = insertUser.insertId;
+    }
+
+    /* 2️⃣ Create pending booking */
+    const bookingDate = date || new Date().toISOString().slice(0, 10);
+
+    const [booking] = await pool.query(
+      `INSERT INTO bookings (user_id, movie_id, date, time_slot_id, total_amount, payment_status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [user_id, movie_id, bookingDate, slot_id, amount]
+    );
+
+    const booking_id = booking.insertId;
+
+    /* 3️⃣ Insert seats */
+    for (let seat of seats) {
+      await pool.query(
+        `INSERT INTO booking_seats (booking_id, seat_no) VALUES (?, ?)`,
+        [booking_id, seat.trim()]
+      );
+    }
+
+    /* 4️⃣ Create Razorpay order */
+    const order = await razorpay.orders.create({
+      amount: amount * 100,
+      currency: "INR",
+      receipt: "receipt_" + booking_id
+    });
+
+    /* 5️⃣ Save order_id inside booking */
+    await pool.query(
+      `UPDATE bookings SET razorpay_order_id = ? WHERE id = ?`,
+      [order.id, booking_id]
+    );
+
+    /* 6️⃣ Send response to bot */
+    res.json({
+      status: "success",
+      booking_id,
+      order_id: order.id,
+      key_id: process.env.RAZORPAY_KEY_ID,
+      amount
+    });
+
+  } catch (err) {
+    console.error("INITIATE BOOKING ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+
+app.post("/verify-payment", async (req, res) => {
+  try {
+    const { 
+      razorpay_payment_id, 
+      razorpay_order_id, 
+      razorpay_signature, 
+      booking_id 
+    } = req.body;
+
+    if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      return res.status(400).json({ error: "Missing payment fields" });
+    }
+
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+
+    /* 1️⃣ Verify signature */
+    const hmac = crypto.createHmac("sha256", secret);
+    hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
+    const generated = hmac.digest("hex");
+
+    if (generated !== razorpay_signature) {
+      return res.json({ verified: false });
+    }
+
+    /* 2️⃣ Fetch amount from booking */
+    const [rows] = await pool.query(
+      `SELECT total_amount FROM bookings WHERE id = ?`,
+      [booking_id]
+    );
+
+    const amount = rows[0].total_amount;
+
+    /* 3️⃣ Mark booking success */
+    await pool.query(
+      `UPDATE bookings SET payment_status='success' WHERE id = ?`,
+      [booking_id]
+    );
+
+    /* 4️⃣ Save payment record */
+    await pool.query(
+      `INSERT INTO payments 
+       (booking_id, razorpay_order_id, razorpay_payment_id, amount, currency, status)
+       VALUES (?, ?, ?, ?, 'INR', 'success')`,
+      [booking_id, razorpay_order_id, razorpay_payment_id, amount]
+    );
+
+    res.json({ verified: true });
+
+  } catch (err) {
+    console.error("VERIFY PAYMENT ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
