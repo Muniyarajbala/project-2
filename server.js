@@ -765,6 +765,52 @@ app.get("/payment", (req, res) => {
   `);
 });
 
+app.post("/check-payment-by-mail", async (req, res) => {
+  try {
+    const { mail } = req.body;
+
+    if (!mail) {
+      return res.status(400).json({ error: "mail is required" });
+    }
+
+    // 1️⃣ Get user by mail
+    const [userRows] = await pool.query(
+      `SELECT id FROM users WHERE email = ?`,
+      [mail]
+    );
+
+    if (userRows.length === 0) {
+      // No user found → no booking
+      return res.json({ paid: false });
+    }
+
+    const user_id = userRows[0].id;
+
+    // 2️⃣ Check if user has a successful payment booking
+    const [bookingRows] = await pool.query(
+      `SELECT id FROM bookings 
+       WHERE user_id = ? 
+       AND payment_status = 'success'
+       ORDER BY id DESC
+       LIMIT 1`,
+      [user_id]
+    );
+
+    if (bookingRows.length === 0) {
+      return res.json({ paid: false });
+    }
+
+    // Booking found
+    return res.json({
+      paid: true,
+      booking_id: bookingRows[0].id
+    });
+
+  } catch (err) {
+    console.error("CHECK PAYMENT BY MAIL ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 /*************************************************
 |   TESTING THE ROUTE
 *************************************************/
