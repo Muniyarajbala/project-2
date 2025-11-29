@@ -1447,5 +1447,106 @@ app.post("/turf-verify-payment", async (req, res) => {
   }
 });
 
+app.post("/turf-check-payment-by-mail", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // 1️⃣ Get user
+    const [userRow] = await pool.query(
+      `SELECT id FROM users WHERE email=?`,
+      [email]
+    );
+
+    if (userRow.length === 0) {
+      return res.json({ paid: false });
+    }
+
+    const user_id = userRow[0].id;
+
+    // 2️⃣ Check if any paid turf booking exists
+    const [bookingRow] = await pool.query(
+      `SELECT id FROM turf_bookings
+       WHERE user_id=? AND payment_status='success'
+       ORDER BY id DESC LIMIT 1`,
+      [user_id]
+    );
+
+    if (bookingRow.length === 0) {
+      return res.json({ paid: false });
+    }
+
+    return res.json({
+      paid: true,
+      turf_booking_id: bookingRow[0].id
+    });
+
+  } catch (err) {
+    console.error("TURF CHECK PAYMENT BY MAIL ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post("/turf-cancel-payment", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // 1️⃣ Find user
+    const [userRow] = await pool.query(
+      `SELECT id FROM users WHERE email=?`,
+      [email]
+    );
+
+    if (userRow.length === 0) {
+      return res.json({ deleted: false, message: "No user found" });
+    }
+
+    const user_id = userRow[0].id;
+
+    // 2️⃣ Find pending turf bookings
+    const [pendingRows] = await pool.query(
+      `SELECT id FROM turf_bookings 
+       WHERE user_id=? AND payment_status='pending'`,
+      [user_id]
+    );
+
+    if (pendingRows.length === 0) {
+      return res.json({ deleted: false, message: "No pending turf booking found" });
+    }
+
+    const ids = pendingRows.map(b => b.id);
+
+    // 3️⃣ Delete booking slots for these bookings
+    await pool.query(
+      `DELETE FROM turf_booking_slots WHERE turf_booking_id IN (${ids.join(",")})`
+    );
+
+    // 4️⃣ Delete payment attempts (if any)
+    await pool.query(
+      `DELETE FROM payments_turf WHERE turf_booking_id IN (${ids.join(",")})`
+    );
+
+    // 5️⃣ Delete turf bookings
+    await pool.query(
+      `DELETE FROM turf_bookings WHERE id IN (${ids.join(",")})`
+    );
+
+    return res.json({
+      deleted: true,
+      message: "Pending turf booking cancelled successfully"
+    });
+
+  } catch (err) {
+    console.error("TURF CANCEL PAYMENT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`)); 
