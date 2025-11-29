@@ -992,31 +992,40 @@ app.post("/my-bookings", async (req, res) => {
     const user_id = userRows[0].id;
 
     // 2️⃣ Get bookings
-        const [bookings] = await pool.query(
+    const [bookings] = await pool.query(
       `SELECT 
           b.id AS booking_id,
-          DATE(b.date) AS date,
+          b.date AS raw_date,
           s.time_slot,
           m.movie_name
-      FROM bookings b
-      LEFT JOIN movies m ON b.movie_id = m.id
-      LEFT JOIN showtimes s ON b.time_slot_id = s.id
-      WHERE b.user_id = ?
-      AND b.payment_status = 'success'
-      ORDER BY b.id DESC`,
+       FROM bookings b
+       LEFT JOIN movies m ON b.movie_id = m.id
+       LEFT JOIN showtimes s ON b.time_slot_id = s.id
+       WHERE b.user_id = ?
+       AND b.payment_status = 'success'
+       ORDER BY b.id DESC`,
       [user_id]
     );
 
-
-    // 3️⃣ Seats → convert to string "A1, A2, A3"
+    // 3️⃣ Process each booking
     for (let b of bookings) {
+
+      // 👉 Format Date (remove "T00:00:00.000Z")
+      if (b.raw_date instanceof Date) {
+        b.date = b.raw_date.toISOString().split("T")[0];
+      } else {
+        b.date = b.raw_date;  
+      }
+
+      delete b.raw_date; // remove extra field
+
+      // 👉 Fetch seats → "A1, A2"
       const [seats] = await pool.query(
         `SELECT seat_no FROM booking_seats WHERE booking_id = ?`,
         [b.booking_id]
       );
 
-      const seatList = seats.map(s => s.seat_no);   // ["A1","A2"]
-      b.seats = seatList.join(", ");                // "A1, A2"
+      b.seats = seats.map(s => s.seat_no).join(", ");
     }
 
     return res.json({
@@ -1029,6 +1038,7 @@ app.post("/my-bookings", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /*************************************************
 |   TESTING THE ROUTE
