@@ -970,6 +970,65 @@ app.post("/cancel-payment", async (req, res) => {
   }
 });
 
+
+app.post("/my-bookings", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // 1️⃣ Check user exists
+    const [userRows] = await pool.query(
+      `SELECT id FROM users WHERE email = ?`,
+      [email]
+    );
+
+    if (userRows.length === 0) {
+      return res.json({ exist: false });
+    }
+
+    const user_id = userRows[0].id;
+
+    // 2️⃣ Get bookings
+    const [bookings] = await pool.query(
+      `SELECT 
+          b.id AS booking_id,
+          b.date,
+          s.time_slot,
+          m.movie_name
+       FROM bookings b
+       LEFT JOIN movies m ON b.movie_id = m.id
+       LEFT JOIN showtimes s ON b.time_slot_id = s.id
+       WHERE b.user_id = ?
+       AND b.payment_status = 'success'
+       ORDER BY b.id DESC`,
+      [user_id]
+    );
+
+    // 3️⃣ Seats → convert to string "A1, A2, A3"
+    for (let b of bookings) {
+      const [seats] = await pool.query(
+        `SELECT seat_no FROM booking_seats WHERE booking_id = ?`,
+        [b.booking_id]
+      );
+
+      const seatList = seats.map(s => s.seat_no);   // ["A1","A2"]
+      b.seats = seatList.join(", ");                // "A1, A2"
+    }
+
+    return res.json({
+      exist: true,
+      bookings
+    });
+
+  } catch (err) {
+    console.error("MY BOOKINGS ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /*************************************************
 |   TESTING THE ROUTE
 *************************************************/
