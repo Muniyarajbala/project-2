@@ -1230,5 +1230,222 @@ app.post("/turf-initiate-booking", async (req, res) => {
   }
 });
 
+app.get("/turf-payment", (req, res) => {
+  const { key, order_id, amount, turf_booking_id, name, email } = req.query;
+
+  res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turf Payment</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 450px;
+            width: 100%;
+            text-align: center;
+            animation: fadeIn 0.4s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .icon { font-size: 64px; margin-bottom: 15px; }
+        h2 { color: #333; margin-bottom: 10px; font-size: 24px; }
+        .booking-id { color: #444; font-size: 14px; margin-bottom: 20px; }
+        .amount {
+            font-size: 52px;
+            color: #0ba360;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .pay-btn {
+            background: #0ba360;
+            color: white;
+            border: none;
+            padding: 16px 50px;
+            font-size: 18px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: 0.3s ease;
+            font-weight: 600;
+        }
+        .pay-btn:hover {
+            background: #099f54;
+            transform: translateY(-3px);
+        }
+        .pay-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            min-height: 25px;
+            font-size: 16px;
+        }
+        .info {
+            background: #f3f3f3;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="icon">⚽</div>
+    <h2>Turf Payment</h2>
+    <div class="booking-id">Booking ID: <strong>${turf_booking_id}</strong></div>
+
+    <div class="amount">₹${amount}</div>
+
+    <div class="info">Secure payment powered by Razorpay</div>
+
+    <button class="pay-btn" id="payBtn" onclick="openRazorpay()">Pay Now</button>
+
+    <div class="status" id="status"></div>
+</div>
+
+<script>
+function openRazorpay() {
+    const options = {
+        key: '${key}',
+        amount: ${amount} * 100,
+        currency: 'INR',
+        order_id: '${order_id}',
+        name: 'Turf Booking',
+        description: 'Turf Slot Payment',
+        prefill: {
+            name: '${name}',
+            email: '${email}'
+        },
+        handler: function (response) {
+            verifyPayment(response);
+        },
+        modal: {
+            ondismiss: function () {
+                showMessage('Payment Cancelled', 'error');
+                setTimeout(() => window.close(), 1500);
+            }
+        }
+    };
+
+    const rzp = new Razorpay(options);
+    rzp.open();
+}
+
+async function verifyPayment(response) {
+    document.getElementById('payBtn').disabled = true;
+    showMessage('Verifying payment...', 'info');
+
+    const result = await fetch('/turf-verify-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_signature: response.razorpay_signature,
+            turf_booking_id: '${turf_booking_id}'
+        })
+    });
+
+    const data = await result.json();
+
+    if (data.verified) {
+        showMessage('Payment Successful ✔', 'success');
+        setTimeout(() => window.close(), 2000);
+    } else {
+        showMessage('Payment Verification Failed ❌', 'error');
+    }
+}
+
+function showMessage(msg, type) {
+    document.getElementById('status').innerHTML =
+        '<span class="' + type + '">' + msg + '</span>';
+}
+</script>
+
+</body>
+</html>
+  `);
+});
+app.post("/turf-verify-payment", async (req, res) => {
+  try {
+    const {
+      razorpay_payment_id,
+      razorpay_order_id,
+      razorpay_signature,
+      turf_booking_id
+    } = req.body;
+
+    if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      return res.status(400).json({ error: "Missing payment fields" });
+    }
+
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+
+    // 1️⃣ Generate HMAC signature
+    const hmac = crypto.createHmac("sha256", secret);
+    hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
+    const digest = hmac.digest("hex");
+
+    if (digest !== razorpay_signature) {
+      return res.json({ verified: false });
+    }
+
+    // 2️⃣ Get amount for this booking
+    const [rows] = await pool.query(
+      `SELECT total_amount FROM turf_bookings WHERE id=?`,
+      [turf_booking_id]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ verified: false, error: "Booking not found" });
+    }
+
+    const amount = rows[0].total_amount;
+
+    // 3️⃣ Mark booking as success
+    await pool.query(
+      `UPDATE turf_bookings SET payment_status='success' WHERE id=?`,
+      [turf_booking_id]
+    );
+
+    // 4️⃣ Save payment entry
+    await pool.query(
+      `INSERT INTO payments_turf 
+       (turf_booking_id, razorpay_order_id, razorpay_payment_id, amount, currency, status)
+       VALUES (?, ?, ?, ?, 'INR', 'success')`,
+      [turf_booking_id, razorpay_order_id, razorpay_payment_id, amount]
+    );
+
+    return res.json({ verified: true });
+
+  } catch (err) {
+    console.error("TURF VERIFY PAYMENT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`)); 
