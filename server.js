@@ -992,20 +992,21 @@ app.post("/my-bookings", async (req, res) => {
     const user_id = userRows[0].id;
 
     // 2️⃣ Get bookings
-    const [bookings] = await pool.query(
+        const [bookings] = await pool.query(
       `SELECT 
           b.id AS booking_id,
-          b.date,
+          DATE(b.date) AS date,
           s.time_slot,
           m.movie_name
-       FROM bookings b
-       LEFT JOIN movies m ON b.movie_id = m.id
-       LEFT JOIN showtimes s ON b.time_slot_id = s.id
-       WHERE b.user_id = ?
-       AND b.payment_status = 'success'
-       ORDER BY b.id DESC`,
+      FROM bookings b
+      LEFT JOIN movies m ON b.movie_id = m.id
+      LEFT JOIN showtimes s ON b.time_slot_id = s.id
+      WHERE b.user_id = ?
+      AND b.payment_status = 'success'
+      ORDER BY b.id DESC`,
       [user_id]
     );
+
 
     // 3️⃣ Seats → convert to string "A1, A2, A3"
     for (let b of bookings) {
