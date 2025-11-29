@@ -155,6 +155,39 @@ function toMinutes(time12) {
   return h * 60 + m;
 }
 
+app.post("/store-user", async (req, res) => {
+  try {
+    const { name, email } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({ error: "name and email required" });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO users (name, email) VALUES (?, ?)`,
+      [name, email]
+    );
+
+    res.json({
+      status: "success",
+      user_id: result.insertId
+    });
+
+  } catch (err) {
+    console.error("STORE USER ERROR:", err);
+
+    // If email already exists → send friendly message
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.json({
+        status: "exists",
+        message: "Email already exists"
+      });
+    }
+
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/save-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
