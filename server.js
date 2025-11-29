@@ -66,6 +66,15 @@ async function createTables() {
       )
     `);
 
+      await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_otps (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(150) NOT NULL,
+      otp VARCHAR(10) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS movies (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -145,6 +154,76 @@ function toMinutes(time12) {
 
   return h * 60 + m;
 }
+
+app.post("/save-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ error: "email and otp required" });
+    }
+
+    // DELETE previous OTP entries for this email
+    await pool.query(
+      `DELETE FROM email_otps WHERE email = ?`,
+      [email]
+    );
+
+    // INSERT new OTP
+    await pool.query(
+      `INSERT INTO email_otps (email, otp) VALUES (?, ?)`,
+      [email, otp]
+    );
+
+    res.json({ status: "success", message: "OTP saved" });
+
+  } catch (err) {
+    console.error("SAVE OTP ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/get-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "email required" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT otp, created_at 
+       FROM email_otps 
+       WHERE email = ?
+       ORDER BY id DESC 
+       LIMIT 1`,
+      [email]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ exist: false });
+    }
+
+    // Optional: Check expiry (5 min)
+    const otpTime = new Date(rows[0].created_at);
+    const now = new Date();
+    const diffMinutes = (now - otpTime) / 1000 / 60;
+
+    if (diffMinutes > 5) {
+      return res.json({ exist: true, expired: true });
+    }
+
+    res.json({
+      exist: true,
+      expired: false,
+      otp: rows[0].otp
+    });
+
+  } catch (err) {
+    console.error("GET OTP ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /*************************************************
 |   GET MOVIES
