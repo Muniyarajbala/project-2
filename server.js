@@ -172,29 +172,6 @@ async function createTables() {
       )
     `);
 
-      await pool.query(`
-      INSERT IGNORE INTO turf_slots (slot_time) VALUES
-      ('06:00 AM - 07:00 AM'),
-      ('07:00 AM - 08:00 AM'),
-      ('08:00 AM - 09:00 AM'),
-      ('09:00 AM - 10:00 AM'),
-      ('10:00 AM - 11:00 AM'),
-      ('11:00 AM - 12:00 PM'),
-      ('12:00 PM - 01:00 PM'),
-      ('01:00 PM - 02:00 PM'),
-      ('02:00 PM - 03:00 PM'),
-      ('03:00 PM - 04:00 PM'),
-      ('04:00 PM - 05:00 PM'),
-      ('05:00 PM - 06:00 PM'),
-      ('06:00 PM - 07:00 PM'),
-      ('07:00 PM - 08:00 PM'),
-      ('08:00 PM - 09:00 PM'),
-      ('09:00 PM - 10:00 PM')
-    `);
-
-
-
-
     console.log("MySQL Tables created successfully!");
 
   } catch (err) {
@@ -1105,15 +1082,63 @@ app.post("/my-bookings", async (req, res) => {
 /*************************************************
 |   TESTING THE ROUTE
 *************************************************/
+app.post("/turf-available-slots", async (req, res) => {
+  try {
+    const { date } = req.body;
 
-// After adding above route, restart your server
-// Test URL format:
-// http://localhost:3000/payment?key=rzp_test_xxx&order_id=order_123&amount=450&booking_id=1&name=Test&email=test@test.com
+    if (!date) {
+      return res.status(400).json({ error: "date is required" });
+    }
 
-// On Railway:
-// https://your-app.railway.app/payment?key=rzp_test_xxx&order_id=order_123&amount=450&booking_id=1&name=Test&email=test@test.com
-/*************************************************
-|   SERVER START
-*************************************************/
+    // Convert Zobot date (29-Nov-2025) → MySQL (2025-11-29)
+    function convertToMySQLDate(zobotDate) {
+      const months = {
+        Jan: "01", Feb: "02", Mar: "03", Apr: "04",
+        May: "05", Jun: "06", Jul: "07", Aug: "08",
+        Sep: "09", Oct: "10", Nov: "11", Dec: "12"
+      };
+
+      const parts = zobotDate.split("-");
+      const day = parts[0];
+      const month = months[parts[1]];
+      const year = parts[2];
+
+      return `${year}-${month}-${day}`;
+    }
+
+    const mysqlDate = convertToMySQLDate(date);
+
+    // 1️⃣ Fetch all slots with ids
+    const [allSlots] = await pool.query(`
+      SELECT id, slot_time FROM turf_slots ORDER BY id
+    `);
+
+    // 2️⃣ Fetch booked slots for that date
+    const [booked] = await pool.query(`
+      SELECT tbs.slot_time 
+      FROM turf_booking_slots tbs
+      INNER JOIN turf_bookings tb ON tb.id = tbs.turf_booking_id
+      WHERE tb.date = ?
+      AND tb.payment_status = 'success'
+    `, [mysqlDate]);
+
+    const bookedSlots = booked.map(b => b.slot_time);
+
+    // 3️⃣ Filter only available slots (return id + slot_time)
+    const available = allSlots.filter(slot => 
+      !bookedSlots.includes(slot.slot_time)
+    );
+
+    return res.json({
+      status: "success",
+      available_slots: available
+    });
+
+  } catch (err) {
+    console.error("AVAILABLE TURF SLOTS ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`)); 
