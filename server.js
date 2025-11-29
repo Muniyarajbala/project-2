@@ -192,11 +192,7 @@ app.post("/get-otp", async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT otp, created_at 
-       FROM email_otps 
-       WHERE email = ?
-       ORDER BY id DESC 
-       LIMIT 1`,
+      `SELECT otp FROM email_otps WHERE email = ? ORDER BY id DESC LIMIT 1`,
       [email]
     );
 
@@ -204,18 +200,8 @@ app.post("/get-otp", async (req, res) => {
       return res.json({ exist: false });
     }
 
-    // Optional: Check expiry (5 min)
-    const otpTime = new Date(rows[0].created_at);
-    const now = new Date();
-    const diffMinutes = (now - otpTime) / 1000 / 60;
-
-    if (diffMinutes > 5) {
-      return res.json({ exist: true, expired: true });
-    }
-
     res.json({
       exist: true,
-      expired: false,
       otp: rows[0].otp
     });
 
@@ -224,6 +210,7 @@ app.post("/get-otp", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /*************************************************
 |   GET MOVIES
