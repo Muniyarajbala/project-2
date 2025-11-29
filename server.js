@@ -910,6 +910,66 @@ app.post("/check-payment-by-mail", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.post("/cancel-payment", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // 1️⃣ Find user
+    const [userRows] = await pool.query(
+      `SELECT id FROM users WHERE email = ?`,
+      [email]
+    );
+
+    if (userRows.length === 0) {
+      return res.json({ deleted: false, message: "No user found" });
+    }
+
+    const user_id = userRows[0].id;
+
+    // 2️⃣ Find pending bookings for user
+    const [bookingRows] = await pool.query(
+      `SELECT id FROM bookings 
+       WHERE user_id = ? AND payment_status = 'pending'`,
+      [user_id]
+    );
+
+    if (bookingRows.length === 0) {
+      return res.json({ deleted: false, message: "No pending booking found" });
+    }
+
+    const bookingIds = bookingRows.map(b => b.id);
+
+    // 3️⃣ Delete seats of these bookings
+    await pool.query(
+      `DELETE FROM booking_seats WHERE booking_id IN (${bookingIds.join(",")})`
+    );
+
+    // 4️⃣ Delete payment entries linked with these pending bookings
+    await pool.query(
+      `DELETE FROM payments WHERE booking_id IN (${bookingIds.join(",")})`
+    );
+
+    // 5️⃣ Delete pending bookings
+    await pool.query(
+      `DELETE FROM bookings WHERE id IN (${bookingIds.join(",")})`
+    );
+
+    res.json({
+      deleted: true,
+      message: "Pending booking cancelled and data removed"
+    });
+
+  } catch (err) {
+    console.error("CANCEL PAYMENT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /*************************************************
 |   TESTING THE ROUTE
 *************************************************/
