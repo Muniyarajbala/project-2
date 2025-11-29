@@ -131,7 +131,69 @@ async function createTables() {
         FOREIGN KEY (booking_id) REFERENCES bookings(id)
       )
     `);
-    
+      await pool.query(`
+    CREATE TABLE IF NOT EXISTS turf_slots (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      slot_time VARCHAR(30) NOT NULL UNIQUE
+    )
+  `);
+            
+      await pool.query(`
+      CREATE TABLE IF NOT EXISTS turf_bookings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        date DATE NOT NULL,
+        total_amount INT NOT NULL,
+        payment_status VARCHAR(20) DEFAULT 'pending',
+        razorpay_order_id VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+        await pool.query(`
+      CREATE TABLE IF NOT EXISTS turf_booking_slots (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        turf_booking_id INT NOT NULL,
+        slot_time VARCHAR(30) NOT NULL,
+        FOREIGN KEY (turf_booking_id) REFERENCES turf_bookings(id)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS payments_turf (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        turf_booking_id INT NOT NULL,
+        razorpay_order_id VARCHAR(100),
+        razorpay_payment_id VARCHAR(100),
+        amount INT NOT NULL,
+        currency VARCHAR(10) DEFAULT 'INR',
+        status VARCHAR(20) DEFAULT 'success',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (turf_booking_id) REFERENCES turf_bookings(id)
+      )
+    `);
+
+      await pool.query(`
+      INSERT IGNORE INTO turf_slots (slot_time) VALUES
+      ('06:00 AM - 07:00 AM'),
+      ('07:00 AM - 08:00 AM'),
+      ('08:00 AM - 09:00 AM'),
+      ('09:00 AM - 10:00 AM'),
+      ('10:00 AM - 11:00 AM'),
+      ('11:00 AM - 12:00 PM'),
+      ('12:00 PM - 01:00 PM'),
+      ('01:00 PM - 02:00 PM'),
+      ('02:00 PM - 03:00 PM'),
+      ('03:00 PM - 04:00 PM'),
+      ('04:00 PM - 05:00 PM'),
+      ('05:00 PM - 06:00 PM'),
+      ('06:00 PM - 07:00 PM'),
+      ('07:00 PM - 08:00 PM'),
+      ('08:00 PM - 09:00 PM'),
+      ('09:00 PM - 10:00 PM')
+    `);
+
+
+
 
     console.log("MySQL Tables created successfully!");
 
