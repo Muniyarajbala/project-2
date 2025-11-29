@@ -1139,6 +1139,96 @@ app.post("/turf-available-slots", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+///payment for turf
+
+app.post("/turf-initiate-booking", async (req, res) => {
+  try {
+    const { name, email, date, selected_time_slots_id, amount } = req.body;
+
+    if (!name || !email || !date || !selected_time_slots_id || !amount) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    // Convert Zobot date (29-Nov-2025) → MySQL
+    function convertToMySQLDate(zobotDate) {
+      const months = {
+        Jan: "01", Feb: "02", Mar: "03", Apr: "04",
+        May: "05", Jun: "06", Jul: "07", Aug: "08",
+        Sep: "09", Oct: "10", Nov: "11", Dec: "12"
+      };
+      const parts = zobotDate.split("-");
+      return `${parts[2]}-${months[parts[1]]}-${parts[0]}`;
+    }
+
+    const mysqlDate = convertToMySQLDate(date);
+
+    // 1️⃣ Check or insert user
+    let [u] = await pool.query(`SELECT id FROM users WHERE email=?`, [email]);
+    let user_id;
+
+    if (u.length > 0) user_id = u[0].id;
+    else {
+      const [ins] = await pool.query(
+        `INSERT INTO users (name,email) VALUES (?,?)`,
+        [name, email]
+      );
+      user_id = ins.insertId;
+    }
+
+    // 2️⃣ Create turf booking (pending)
+    const [b] = await pool.query(
+      `INSERT INTO turf_bookings (user_id,date,total_amount,payment_status)
+       VALUES (?,?,?,'pending')`,
+      [user_id, mysqlDate, amount]
+    );
+
+    const turf_booking_id = b.insertId;
+
+    // 3️⃣ Insert selected slot_times
+    for (let id of selected_time_slots_id) {
+      const [slot] = await pool.query(
+        `SELECT slot_time FROM turf_slots WHERE id=?`,
+        [id]
+      );
+
+      if (slot.length > 0) {
+        await pool.query(
+          `INSERT INTO turf_booking_slots (turf_booking_id, slot_time)
+           VALUES (?,?)`,
+          [turf_booking_id, slot[0].slot_time]
+        );
+      }
+    }
+
+    // 4️⃣ Razorpay order
+    const order = await razorpay.orders.create({
+      amount: amount * 100,
+      currency: "INR",
+      receipt: "turf_" + turf_booking_id
+    });
+
+    await pool.query(
+      `UPDATE turf_bookings SET razorpay_order_id=? WHERE id=?`,
+      [order.id, turf_booking_id]
+    );
+
+    // 5️⃣ Payment URL
+    const url =
+      `https://project-2-production-e62e.up.railway.app/turf-payment` +
+      `?key=${process.env.RAZORPAY_KEY_ID}` +
+      `&order_id=${order.id}` +
+      `&amount=${amount}` +
+      `&turf_booking_id=${turf_booking_id}` +
+      `&name=${encodeURIComponent(name)}` +
+      `&email=${encodeURIComponent(email)}`;
+
+    res.json({ status: "success", payment_url: url });
+
+  } catch (err) {
+    console.error("TURF INITIATE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`)); 
