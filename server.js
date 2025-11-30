@@ -1598,5 +1598,76 @@ app.post("/turf-cancel-payment", async (req, res) => {
   }
 });
 
+app.post("/my-turf-bookings", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // 1️⃣ Check if user exists
+    const [userRows] = await pool.query(
+      `SELECT id FROM users WHERE email = ?`,
+      [email]
+    );
+
+    if (userRows.length === 0) {
+      return res.json({ exist: false });
+    }
+
+    const user_id = userRows[0].id;
+
+    // 2️⃣ Fetch all successful turf bookings
+    const [bookings] = await pool.query(
+      `SELECT 
+          tb.id AS turf_booking_id,
+          tb.date AS raw_date,
+          tb.total_amount
+       FROM turf_bookings tb
+       WHERE tb.user_id = ?
+       AND tb.payment_status = 'success'
+       ORDER BY tb.id DESC`,
+      [user_id]
+    );
+
+    if (bookings.length === 0) {
+      return res.json({ exist: true, bookings: [] });
+    }
+
+    // 3️⃣ Format each booking
+    for (let b of bookings) {
+
+      // Convert MySQL date → YYYY-MM-DD
+      if (b.raw_date instanceof Date) {
+        b.date = b.raw_date.toISOString().split("T")[0];
+      } else {
+        b.date = b.raw_date;
+      }
+
+      delete b.raw_date;
+
+      // Fetch all slot_times for the booking
+      const [slots] = await pool.query(
+        `SELECT slot_time 
+         FROM turf_booking_slots 
+         WHERE turf_booking_id = ?`,
+        [b.turf_booking_id]
+      );
+
+      b.slots = slots.map(s => s.slot_time).join(", ");
+    }
+
+    return res.json({
+      exist: true,
+      bookings: bookings
+    });
+
+  } catch (err) {
+    console.error("MY TURF BOOKINGS ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`)); 
