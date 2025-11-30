@@ -911,25 +911,27 @@ app.post("/check-payment-by-mail", async (req, res) => {
       return res.status(400).json({ error: "mail is required" });
     }
 
-    // 1️⃣ Get user by mail
+    // 1️⃣ Find user
     const [userRows] = await pool.query(
       `SELECT id FROM users WHERE email = ?`,
       [mail]
     );
 
     if (userRows.length === 0) {
-      // No user found → no booking
       return res.json({ paid: false });
     }
 
     const user_id = userRows[0].id;
 
-    // 2️⃣ Check if user has a successful payment booking
+    // 2️⃣ Get latest successful booking
     const [bookingRows] = await pool.query(
-      `SELECT id FROM bookings 
-       WHERE user_id = ? 
-       AND payment_status = 'success'
-       ORDER BY id DESC
+      `SELECT b.id, b.date, s.time_slot, m.movie_name
+       FROM bookings b
+       LEFT JOIN movies m ON m.id = b.movie_id
+       LEFT JOIN showtimes s ON s.id = b.time_slot_id
+       WHERE b.user_id = ?
+       AND b.payment_status = 'success'
+       ORDER BY b.id DESC
        LIMIT 1`,
       [user_id]
     );
@@ -938,10 +940,20 @@ app.post("/check-payment-by-mail", async (req, res) => {
       return res.json({ paid: false });
     }
 
-    // Booking found
+    const booking = bookingRows[0];
+
+    // 3️⃣ Build calendar link
+    const calendar_link = buildTheatreCalendarLink(
+      booking.movie_name,
+      booking.date,
+      booking.time_slot
+    );
+
+    // 4️⃣ Send full response
     return res.json({
       paid: true,
-      booking_id: bookingRows[0].id
+      booking_id: booking.id,
+      calendar_link: calendar_link
     });
 
   } catch (err) {
@@ -949,6 +961,7 @@ app.post("/check-payment-by-mail", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.post("/cancel-payment", async (req, res) => {
   try {
