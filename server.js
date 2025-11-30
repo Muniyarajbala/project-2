@@ -1268,10 +1268,19 @@ app.post("/turf-initiate-booking", async (req, res) => {
 
     const turf_booking_id = b.insertId;
 
-    // 3️⃣ SLOT FIX → Remove duplicates & Validate each slot
-    const uniqueSlotIds = [...new Set(selected_time_slots_id)];
+    // 3️⃣ FIX SLOT INPUT — Convert "14,15,16" → [14, 15, 16]
+    let slotArray = selected_time_slots_id;
+
+    if (typeof slotArray === "string") {
+      slotArray = slotArray.split(",").map(s => s.trim());
+    }
+
+    // Convert each slot to number + remove duplicates
+    const uniqueSlotIds = [...new Set(slotArray.map(id => Number(id)))];
+
     console.log("UNIQUE SLOTS:", uniqueSlotIds);
 
+    // 4️⃣ Insert slot times in DB
     for (let id of uniqueSlotIds) {
       const [slot] = await pool.query(
         `SELECT slot_time FROM turf_slots WHERE id=?`,
@@ -1280,7 +1289,7 @@ app.post("/turf-initiate-booking", async (req, res) => {
 
       if (slot.length === 0) {
         console.log("IGNORED INVALID SLOT:", id);
-        continue; // Skip invalid slot id
+        continue;
       }
 
       await pool.query(
@@ -1290,7 +1299,7 @@ app.post("/turf-initiate-booking", async (req, res) => {
       );
     }
 
-    // 4️⃣ Razorpay order
+    // 5️⃣ Razorpay order
     const order = await razorpay.orders.create({
       amount: amount * 100,
       currency: "INR",
@@ -1302,7 +1311,7 @@ app.post("/turf-initiate-booking", async (req, res) => {
       [order.id, turf_booking_id]
     );
 
-    // 5️⃣ Payment URL
+    // 6️⃣ Payment URL
     const url =
       `https://project-2-production-e62e.up.railway.app/turf-payment` +
       `?key=${process.env.RAZORPAY_KEY_ID}` +
@@ -1312,6 +1321,7 @@ app.post("/turf-initiate-booking", async (req, res) => {
       `&name=${encodeURIComponent(name)}` +
       `&email=${encodeURIComponent(email)}`;
 
+    // FINAL RESPONSE
     res.json({
       status: "success",
       payment_url: url
@@ -1322,7 +1332,6 @@ app.post("/turf-initiate-booking", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 app.get("/turf-payment", (req, res) => {
   const { key, order_id, amount, turf_booking_id, name, email } = req.query;
