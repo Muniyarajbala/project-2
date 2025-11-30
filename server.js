@@ -1190,6 +1190,38 @@ app.post("/turf-available-slots", async (req, res) => {
   }
 });
 ///payment for turf
+app.get("/turf-all-slots", async (req, res) => {
+  try {
+    // Get all slots
+    const [rows] = await pool.query(`
+      SELECT id, slot_time FROM turf_slots
+    `);
+
+    // Helper function → convert "07:00 PM - 08:00 PM" to minutes
+    function toMinutes(slot) {
+      const start = slot.split(" - ")[0]; // "07:00 PM"
+      const [hm, ampm] = start.split(" ");
+      let [h, m] = hm.split(":").map(Number);
+
+      if (ampm === "PM" && h !== 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+
+      return h * 60 + m;
+    }
+
+    // Sort by starting time
+    rows.sort((a, b) => toMinutes(a.slot_time) - toMinutes(b.slot_time));
+
+    res.json({
+      status: "success",
+      slots: rows
+    });
+
+  } catch (err) {
+    console.error("ALL SLOTS ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post("/turf-initiate-booking", async (req, res) => {
   try {
