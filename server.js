@@ -1199,6 +1199,8 @@ app.post("/turf-initiate-booking", async (req, res) => {
       return res.status(400).json({ error: "Missing fields" });
     }
 
+    console.log("RAW SLOTS RECEIVED:", selected_time_slots_id);
+
     // Convert Zobot date (29-Nov-2025) → MySQL
     function convertToMySQLDate(zobotDate) {
       const months = {
@@ -1234,20 +1236,26 @@ app.post("/turf-initiate-booking", async (req, res) => {
 
     const turf_booking_id = b.insertId;
 
-    // 3️⃣ Insert selected slot_times
-    for (let id of selected_time_slots_id) {
+    // 3️⃣ SLOT FIX → Remove duplicates & Validate each slot
+    const uniqueSlotIds = [...new Set(selected_time_slots_id)];
+    console.log("UNIQUE SLOTS:", uniqueSlotIds);
+
+    for (let id of uniqueSlotIds) {
       const [slot] = await pool.query(
         `SELECT slot_time FROM turf_slots WHERE id=?`,
         [id]
       );
 
-      if (slot.length > 0) {
-        await pool.query(
-          `INSERT INTO turf_booking_slots (turf_booking_id, slot_time)
-           VALUES (?,?)`,
-          [turf_booking_id, slot[0].slot_time]
-        );
+      if (slot.length === 0) {
+        console.log("IGNORED INVALID SLOT:", id);
+        continue; // Skip invalid slot id
       }
+
+      await pool.query(
+        `INSERT INTO turf_booking_slots (turf_booking_id, slot_time)
+         VALUES (?,?)`,
+        [turf_booking_id, slot[0].slot_time]
+      );
     }
 
     // 4️⃣ Razorpay order
@@ -1272,13 +1280,17 @@ app.post("/turf-initiate-booking", async (req, res) => {
       `&name=${encodeURIComponent(name)}` +
       `&email=${encodeURIComponent(email)}`;
 
-    res.json({ status: "success", payment_url: url });
+    res.json({
+      status: "success",
+      payment_url: url
+    });
 
   } catch (err) {
     console.error("TURF INITIATE ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.get("/turf-payment", (req, res) => {
   const { key, order_id, amount, turf_booking_id, name, email } = req.query;
