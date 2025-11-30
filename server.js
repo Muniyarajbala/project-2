@@ -58,6 +58,18 @@ const razorpay = new Razorpay({
 async function createTables() {
   try {
     await pool.query(`
+  CREATE TABLE IF NOT EXISTS movie_puzzles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    question TEXT NOT NULL,
+    option_a VARCHAR(255) NOT NULL,
+    option_b VARCHAR(255) NOT NULL,
+    option_c VARCHAR(255) NOT NULL,
+    option_d VARCHAR(255) NOT NULL,
+    correct_answer VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100),
@@ -1789,6 +1801,65 @@ app.post("/my-turf-bookings", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.post("/add-puzzle", async (req, res) => {
+  try {
+    const { question, option_a, option_b, option_c, option_d, correct_answer } = req.body;
+
+    if (!question || !option_a || !option_b || !option_c || !option_d || !correct_answer) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    await pool.query(
+      `INSERT INTO movie_puzzles 
+       (question, option_a, option_b, option_c, option_d, correct_answer)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [question, option_a, option_b, option_c, option_d, correct_answer]
+    );
+
+    res.json({ status: "success", message: "Puzzle added successfully" });
+
+  } catch (err) {
+    console.error("ADD PUZZLE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/daily-puzzle", async (req, res) => {
+  try {
+    const [rows] = await pool.query(`SELECT * FROM movie_puzzles ORDER BY id`);
+
+    if (rows.length === 0) {
+      return res.json({ status: "empty", message: "No puzzles available" });
+    }
+
+    // Pick today's puzzle index
+    const today = new Date();
+    const dayNum = today.getDate(); // 1 → 31
+    const index = (dayNum - 1) % rows.length; 
+
+    const puzzle = rows[index];
+
+    res.json({
+      status: "success",
+      puzzle: {
+        id: puzzle.id,
+        question: puzzle.question,
+        options: {
+          A: puzzle.option_a,
+          B: puzzle.option_b,
+          C: puzzle.option_c,
+          D: puzzle.option_d
+        },
+        answer: puzzle.correct_answer // you wanted answer also
+      }
+    });
+
+  } catch (err) {
+    console.error("DAILY PUZZLE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`)); 
