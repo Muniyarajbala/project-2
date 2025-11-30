@@ -973,10 +973,15 @@ app.post("/check-payment-by-mail", async (req, res) => {
 
     const booking = bookingRows[0];
 
+    // ⭐ FIX DATE ⭐ Convert MySQL DATE → 'YYYY-MM-DD'
+    const dateStr = new Date(booking.date)
+      .toISOString()
+      .split("T")[0];
+
     // 3️⃣ Build calendar link
     const calendar_link = buildTheatreCalendarLink(
       booking.movie_name,
-      booking.date,
+      dateStr,          // USE FIXED STRING
       booking.time_slot
     );
 
@@ -992,6 +997,7 @@ app.post("/check-payment-by-mail", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 app.post("/cancel-payment", async (req, res) => {
