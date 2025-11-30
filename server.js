@@ -1844,12 +1844,12 @@ app.get("/daily-puzzle", async (req, res) => {
       puzzle: {
         id: puzzle.id,
         question: puzzle.question,
-        options: {
-          A: puzzle.option_a,
-          B: puzzle.option_b,
-          C: puzzle.option_c,
-          D: puzzle.option_d
-        },
+        options: [
+           puzzle.option_a,
+           puzzle.option_b,
+           puzzle.option_c,
+           puzzle.option_d
+        ],
         answer: puzzle.correct_answer // you wanted answer also
       }
     });
