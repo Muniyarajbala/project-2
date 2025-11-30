@@ -1496,7 +1496,23 @@ app.post("/turf-verify-payment", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// Helper: Convert "06:00 AM - 07:00 AM" → "06:00 AM"
+function getStartTime(slot) {
+  return slot.split("-")[0].trim();
+}
 
+// Helper: Convert 12h time to 24h "HHMM"
+function convertTo24(time12) {
+  let [time, ampm] = time12.split(" ");
+  let [h, m] = time.split(":").map(Number);
+
+  if (ampm === "PM" && h !== 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+
+  return { h, m };
+}
+
+// MAIN API
 app.post("/turf-check-payment-by-mail", async (req, res) => {
   try {
     const { email } = req.body;
@@ -1517,9 +1533,10 @@ app.post("/turf-check-payment-by-mail", async (req, res) => {
 
     const user_id = userRow[0].id;
 
-    // 2️⃣ Check if any paid turf booking exists
+    // 2️⃣ Get latest successful turf booking
     const [bookingRow] = await pool.query(
-      `SELECT id FROM turf_bookings
+      `SELECT id, date, total_amount
+       FROM turf_bookings
        WHERE user_id=? AND payment_status='success'
        ORDER BY id DESC LIMIT 1`,
       [user_id]
@@ -1529,9 +1546,59 @@ app.post("/turf-check-payment-by-mail", async (req, res) => {
       return res.json({ paid: false });
     }
 
+    const booking = bookingRow[0];
+
+    // 3️⃣ Get all slot times
+    const [slots] = await pool.query(
+      `SELECT slot_time FROM turf_booking_slots WHERE turf_booking_id=?`,
+      [booking.id]
+    );
+
+    if (slots.length === 0) {
+      return res.json({
+        paid: true,
+        turf_booking_id: booking.id,
+        calendar_link: null
+      });
+    }
+
+    // Sort slots like: earliest → last
+    const sortedSlots = slots.map(s => s.slot_time);
+
+    // Get start time of first slot (e.g. "06:00 AM")
+    const startTime = getStartTime(sortedSlots[0]);
+
+    // Get end time from last slot's end time
+    // "07:00 AM - 08:00 AM" → "08:00 AM"
+    const lastSlot = sortedSlots[sortedSlots.length - 1];
+    const endTime = lastSlot.split("-")[1].trim();
+
+    // 4️⃣ Convert MySQL date YYYY-MM-DD to event format
+    const [year, month, day] = booking.date.toISOString().split("T")[0].split("-");
+
+    // Convert start time to 24h
+    const { h: sh, m: sm } = convertTo24(startTime);
+    const startDT = `${year}${month}${day}T${String(sh).padStart(2, "0")}${String(sm).padStart(2, "0")}00`;
+
+    // Convert end time to 24h
+    const { h: eh, m: em } = convertTo24(endTime);
+    const endDT = `${year}${month}${day}T${String(eh).padStart(2, "0")}${String(em).padStart(2, "0")}00`;
+
+    // 5️⃣ Build final Google Calendar link
+    const desc = `Turf Booking\nSlots: ${sortedSlots.join(", ")}\nAmount: ₹${booking.total_amount}`;
+
+    const calendarLink =
+      "https://www.google.com/calendar/render?action=TEMPLATE" +
+      "&text=" + encodeURIComponent("Turf Booking") +
+      "&details=" + encodeURIComponent(desc) +
+      "&dates=" + startDT + "/" + endDT;
+
+    // 6️⃣ Response
     return res.json({
       paid: true,
-      turf_booking_id: bookingRow[0].id
+      turf_booking_id: booking.id,
+     
+      calendar_link: calendarLink
     });
 
   } catch (err) {
@@ -1539,6 +1606,7 @@ app.post("/turf-check-payment-by-mail", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.post("/turf-cancel-payment", async (req, res) => {
   try {
     const { email } = req.body;
