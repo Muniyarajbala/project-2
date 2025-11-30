@@ -180,6 +180,37 @@ async function createTables() {
 }
 
 createTables();
+function buildTheatreCalendarLink(movieName, date, startTime) {
+  const [year, month, day] = date.split("-");
+
+  // Convert 12h start time → 24h
+  let [time, ampm] = startTime.split(" ");
+  let [h, m] = time.split(":").map(Number);
+
+  if (ampm === "PM" && h !== 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+
+  const startHH = h.toString().padStart(2, "0");
+  const startMM = m.toString().padStart(2, "0");
+
+  const startDT = `${year}${month}${day}T${startHH}${startMM}00`;
+
+  // End time = +2 hours
+  let endH = h + 2;
+  if (endH >= 24) endH -= 24;
+
+  const endHH = endH.toString().padStart(2, "0");
+  const endDT = `${year}${month}${day}T${endHH}${startMM}00`;
+
+  const desc = `Date: ${date}\nTime: ${startTime}`;
+
+  return (
+    "https://www.google.com/calendar/render?action=TEMPLATE" +
+    "&text=" + encodeURIComponent(movieName) +
+    "&details=" + encodeURIComponent(desc) +
+    "&dates=" + startDT + "/" + endDT
+  );
+}
 
 /*************************************************
 |   HELPER — Convert AM/PM time to minutes
